@@ -1,0 +1,28 @@
+{
+  "name": "exactly-once",
+  "version": "0.0.1",
+  "description": "Exactly-once, domain-checked commits for AI agent actions. Agents propose. The database decides.",
+  "license": "MIT",
+  "author": "Alejandro Alvarado (roddcode) <roddcode.dev@gmail.com>",
+  "homepage": "https://roddcode.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/roddcode/exactly-once"
+  },
+  "keywords": [
+    "ai-agents",
+    "exactly-once",
+    "idempotency",
+    "agent-actions",
+    "postgres",
+    "llm",
+    "transactions"
+  ],
+  "type": "module",
+  "files": [
+    "index.js"
+  ],
+  "exports": {
+    ".": "./index.js"
+  }
+}
