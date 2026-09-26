@@ -50,6 +50,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run test/unit",
     "test:db": "vitest run --config vitest.db.config.ts --no-file-parallelism",
+    "test:coverage": "vitest run --config vitest.db.config.ts --no-file-parallelism --coverage",
     "db:up": "docker compose up -d --wait",
     "db:down": "docker compose down -v",
     "validate:package": "publint && attw --pack ."
@@ -59,6 +60,7 @@
     "@biomejs/biome": "^2.5.14",
     "@types/node": "^26.6.2",
     "@types/pg": "^8.23.1",
+    "@vitest/coverage-v8": "^5.0.1",
     "pg": "^8.23.0",
     "publint": "^0.3.24",
     "tsdown": "^0.23.0",

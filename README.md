@@ -2,15 +2,14 @@
 
 **Agents propose. The database decides.**
 
-Exactly-once, domain-checked commits for AI agent actions. Your agent can retry as much as it wants: the action happens once, or not at all.
+[![npm version](https://img.shields.io/npm/v/exactly-once.svg)](https://www.npmjs.com/package/exactly-once)
+[![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-> Status: `v0.1.0` published. The core protocol (propose / commit / get over PostgreSQL) is implemented and tested against a real database, including a 40-agent concurrency race. npm `0.0.1` was a name reservation.
+Exactly-once, domain-checked commits for AI agent actions. Your agent can retry as much as it wants: the action happens once, or not at all.
 
 ## The problem
 
-AI agents retry. A timeout, a crash, an ambiguous response: every one of them leads to the same move, calling the tool again. When that tool books an appointment or charges a card, the retry duplicates a real-world action.
-
-The usual fixes don't hold. Prompts are advice the model can ignore; schemas check the shape of a payload without knowing whether the slot is still free; application-level checks race the moment two requests arrive together. Only the database can guarantee this, so that is where the decision lives.
+AI agents retry. A timeout, a crash, an ambiguous response: every one of them leads to the same move, calling the tool again. When that tool books an appointment or charges a card, the retry duplicates a real-world action. Application-level checks race the moment two requests arrive together, so the guarantee has to live in the database.
 
 ## How it works
 
@@ -23,10 +22,12 @@ Three verbs: `propose`, `commit`, `get`.
 ## Quickstart
 
 ```bash
-docker compose up -d --wait   # local Postgres on :5433
-pnpm install
-pnpm test:db                  # integration + concurrency suites
+npm install exactly-once pg
 ```
+
+Requires Node 20.19+ and PostgreSQL 13+.
+
+The example assumes a `slots(id, booking_id)` table in your database. The authority only owns its own `cg_*` tables; your domain stays yours.
 
 ```ts
 import { Pool } from "pg";
@@ -74,24 +75,15 @@ if (proposal.status === "approved") {
 ## Guarantees
 
 - **Exactly-once**: unique idempotency keys and immutable receipts; replays return the stored receipt.
-- **The database decides**: domain validation against live state, inside the transaction.
+- **Domain-checked**: `validate` runs against live state inside the transaction, before anything commits.
 - **Safe under concurrency**: 40 agents racing for one slot produce exactly one commit (see `test/concurrency`).
 - **Holds with TTL**: expired holds are never committed; reviving requires the same payload.
 - **Audit trail**: every proposal, rejection and commit lands in an append-only log you can query.
 
-## A note on the name
-
-The name claims something precise, so it's worth being precise back. Inside your database, commits are exactly-once: a repeated `commit` returns the same receipt and never runs the effect twice.
-
-If your `apply` calls an external service, pass its idempotency key along too (Stripe has one, for example). Durability on this side plus an idempotency key on the other is what makes retries safe end to end. That combination is usually called effectively-once, and it's the honest name for the whole chain.
-
-## What this is not
-
-This is not an agent framework, a workflow engine or a SaaS. It doesn't replace any of those, and it doesn't care which one you use. It sits between your agent and your database and owns exactly one decision: whether an action commits, and how many times.
-
 ## Docs
 
-- [`docs/architecture.md`](docs/architecture.md): protocol, guarantees, data model, why not X.
+- [`docs/architecture.md`](docs/architecture.md): protocol, guarantees, data model, adapters, why not X.
+- [`docs/errors.md`](docs/errors.md): error codes and how to handle each one.
 
 ## Development
 
@@ -99,7 +91,8 @@ This is not an agent framework, a workflow engine or a SaaS. It doesn't replace 
 |---|---|
 | `pnpm db:up` | Start PostgreSQL (docker compose, port 5433) |
 | `pnpm test` | Unit tests (no database) |
-| `pnpm test:db` | Integration + concurrency suites (run `pnpm db:up` first) |
+| `pnpm test:db` | Full suite against a real PostgreSQL (run `pnpm db:up` first) |
+| `pnpm test:coverage` | Full suite with a coverage report |
 | `pnpm typecheck` | Strict TypeScript |
 | `pnpm lint` | Biome |
 | `pnpm build` | tsdown (ESM + CJS + d.ts) |

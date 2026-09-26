@@ -6,11 +6,32 @@ on:
   pull_request:
 
 jobs:
-  ci:
+  quality:
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm validate:package
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22, 24]
+        postgres: [14, 16, 17]
     services:
       postgres:
-        image: postgres:16
+        image: postgres:${{ matrix.postgres }}
         env:
           POSTGRES_USER: exactly_once
           POSTGRES_PASSWORD: exactly_once
@@ -29,12 +50,12 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: ${{ matrix.node }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm lint
-      - run: pnpm typecheck
-      - run: pnpm test
-      - run: pnpm test:db
-      - run: pnpm build
-      - run: pnpm validate:package
+      - name: Full suite with coverage (primary combo)
+        if: matrix.node == 22 && matrix.postgres == 16
+        run: pnpm test:coverage
+      - name: Full suite
+        if: matrix.node != 22 || matrix.postgres != 16
+        run: pnpm test:db

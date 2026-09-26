@@ -60,6 +60,36 @@ Every mutation the domain needs happens inside the commit transaction: if `apply
 
 `scope` partitions idempotency keys (per tenant, per conversation, per anything). Keys are unique inside a scope.
 
+## Adapters
+
+The `Database` interface is structural: two methods, zero imports. `fromPg` ships in the package and covers `pg` pools. Any other driver is a short adapter. This is `postgres.js`:
+
+```ts
+import postgres from "postgres";
+import type { Client, Database } from "exactly-once";
+
+function client(tx: postgres.TransactionSql): Client {
+  return {
+    async query<R = Record<string, unknown>>(text: string, params: readonly unknown[] = []) {
+      return (await tx.unsafe(text, params as unknown[])) as R[];
+    },
+  };
+}
+
+export function fromPostgresJs(sql: postgres.Sql): Database {
+  return {
+    async query<R = Record<string, unknown>>(text: string, params: readonly unknown[] = []) {
+      return (await sql.unsafe(text, params as unknown[])) as R[];
+    },
+    async transaction<T>(fn: (tx: Client) => Promise<T>): Promise<T> {
+      return sql.begin(async (tx) => fn(client(tx)));
+    },
+  };
+}
+```
+
+Drivers that only speak tagged templates still work: adapt their raw-query path to `unsafe`-style calls with parameters bound at the protocol level.
+
 ## Why not X
 
 - **Prompt rules** ("never duplicate"): advisory. No guarantee.
@@ -67,6 +97,12 @@ Every mutation the domain needs happens inside the commit transaction: if `apply
 - **App-level checks**: race conditions under concurrency.
 - **Database constraints alone**: stop the duplicate, but provide no proposal semantics, holds, receipts or audit.
 - **Durable execution engines** (Temporal, Restate, DBOS): solve step replay at workflow level; heavier, and they still push idempotency to you. This library is the single-commit authority you can use with or without them.
+
+## Exactly-once, precisely
+
+Inside your database, commits are exactly-once: a repeated `commit` returns the same receipt and never runs the effect twice.
+
+If your `apply` calls an external service, pass its idempotency key along too (Stripe has one, for example). Durability here plus an idempotency key there is what makes retries safe end to end. That combination is usually called effectively-once, and it is the honest name for the whole chain.
 
 ## Testing pyramid
 
@@ -85,5 +121,5 @@ TypeScript (strict) · tsdown (ESM + CJS + dts) · vitest · biome · PostgreSQL
 ## Roadmap
 
 - v0.1 (current): propose / commit / get, holds with TTL, revivals, receipts, audit, concurrency suite.
-- v0.2: MCP server adapter, clinic-booking example app, alternatives helpers.
-- v0.3: Vercel AI SDK adapter, property-based tests, crash-recovery tests, stress demo (`demo:stress`).
+- v0.2: MCP server adapter, clinic-booking example app.
+- v0.3: first-party Drizzle and postgres.js adapters, CLI (`init`, `migrate`, `status`), lifecycle hooks.
