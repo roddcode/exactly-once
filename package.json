@@ -1,6 +1,6 @@
 {
   "name": "exactly-once",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Exactly-once, domain-checked commits for AI agent actions. Agents propose. The database decides.",
   "license": "MIT",
   "author": "Alejandro Alvarado (roddcode) <roddcode.dev@gmail.com>",
