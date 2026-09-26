@@ -101,3 +101,7 @@ if (proposal.status === "approved") {
 ## License
 
 MIT
+
+---
+
+Built by [roddcode](https://roddcode.com) — I build AI systems that don't fail when money is at stake. [Hablemos 30 minutos](https://roddcode.com) · [LinkedIn](https://linkedin.com/in/alejandro-alvarado-roddcode)
