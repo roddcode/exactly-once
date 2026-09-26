@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: exactly_once
+      POSTGRES_PASSWORD: exactly_once
+      POSTGRES_DB: exactly_once
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U exactly_once -d exactly_once"]
+      interval: 2s
+      timeout: 3s
+      retries: 15

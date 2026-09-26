@@ -1,5 +1,11 @@
 node_modules/
+dist/
+coverage/
 *.tsbuildinfo
-.env
-.env.*.local
+.env*
+!.env.example
+*.log
+*.tgz
+.npmrc
 .DS_Store
+roadmap.md
