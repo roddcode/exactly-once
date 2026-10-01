@@ -120,6 +120,6 @@ TypeScript (strict) · tsdown (ESM + CJS + dts) · vitest · biome · PostgreSQL
 
 ## Roadmap
 
-- v0.1 (current): propose / commit / get, holds with TTL, revivals, receipts, audit, concurrency suite.
-- v0.2: MCP server adapter, clinic-booking example app.
-- v0.3: first-party Drizzle and postgres.js adapters, CLI (`init`, `migrate`, `status`), lifecycle hooks.
+- v0.1: propose / commit / get, holds with TTL, revivals, receipts, audit, concurrency suite.
+- v0.2 (current): MCP server adapter (`exactly-once/mcp`) exposing the protocol as tools.
+- v0.3: clinic-booking example app, first-party Drizzle and postgres.js adapters, CLI (`init`, `migrate`, `status`), lifecycle hooks.

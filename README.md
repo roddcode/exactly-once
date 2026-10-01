@@ -31,7 +31,7 @@ The example assumes a `slots(id, booking_id)` table in your database. The author
 
 ```ts
 import { Pool } from "pg";
-import { createAuthority, defineAction, fromPg } from "exactly-once";
+import { ActionRejected, createAuthority, defineAction, fromPg } from "exactly-once";
 
 const createBooking = defineAction({
   type: "createBooking",
@@ -46,11 +46,16 @@ const createBooking = defineAction({
       : { allow: false, reason: "slot_taken" };
   },
   apply: async (ctx, payload) => {
-    // Runs inside the commit transaction. If it throws, nothing commits.
-    await ctx.tx.query("update slots set booking_id = $1 where id = $2", [
-      ctx.idempotencyKey,
-      payload.slot,
-    ]);
+    // Runs inside the commit transaction. The conditional update is the atomic
+    // re-check: if another action took the slot after our hold, zero rows
+    // update, and we reject instead of double-booking.
+    const updated = await ctx.tx.query(
+      "update slots set booking_id = $1 where id = $2 and booking_id is null returning id",
+      [ctx.idempotencyKey, payload.slot],
+    );
+    if (updated.length === 0) {
+      throw new ActionRejected("slot_taken");
+    }
     return { slot: payload.slot };
   },
 });
@@ -72,6 +77,31 @@ if (proposal.status === "approved") {
 }
 ```
 
+## MCP server
+
+Any MCP-compatible agent can call the protocol as tools. The adapter lives behind the `exactly-once/mcp` subpath, so the core package stays zero-dependency.
+
+```bash
+npm install exactly-once pg @modelcontextprotocol/sdk zod
+```
+
+```ts
+import { Pool } from "pg";
+import { createAuthority, defineAction, fromPg } from "exactly-once";
+import { connectStdio, createMcpServer } from "exactly-once/mcp";
+
+const authority = createAuthority({
+  db: fromPg(new Pool({ connectionString: process.env.DATABASE_URL })),
+  actions: [createBooking],
+});
+await authority.migrate();
+
+const server = createMcpServer({ authority });
+await connectStdio(server);
+```
+
+Three tools: `propose_action`, `commit_action` and `get_action`. Rejections flow back with reasons and alternatives; operational errors return `isError` with the `E_*` code. Details: [`docs/mcp.md`](docs/mcp.md).
+
 ## Guarantees
 
 - **Exactly-once**: unique idempotency keys and immutable receipts; replays return the stored receipt.
@@ -84,6 +114,7 @@ if (proposal.status === "approved") {
 
 - [`docs/architecture.md`](docs/architecture.md): protocol, guarantees, data model, adapters, why not X.
 - [`docs/errors.md`](docs/errors.md): error codes and how to handle each one.
+- [`docs/mcp.md`](docs/mcp.md): MCP server — tools, errors, agent flow.
 
 ## Development
 
