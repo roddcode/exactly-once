@@ -8,7 +8,7 @@
 2. **Mechanism here, policy in your domain.** The library owns the protocol (propose, hold, commit, receipt, audit). Your `validate` and `apply` callbacks own the business rules.
 3. **Boring and explicit.** SQL with named constraints, no ORM magic, no dependency injection, no plugins. You can read the entire implementation in one sitting.
 4. **Zero runtime dependencies.** Any PostgreSQL driver plugs in through a 20-line structural adapter.
-5. **Typed end to end.** Strict TypeScript, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`.
+5. **Typed where it matters.** Strict TypeScript; action callbacks are typed. Registry lookups use runtime action strings and are validated by the authority.
 
 ## The protocol
 
@@ -52,17 +52,17 @@ Every mutation the domain needs happens inside the commit transaction. `apply` r
 
 | Guarantee | Mechanism |
 |---|---|
-| No duplicated actions | `unique (scope, idempotency_key)` + immutable receipts; replays return the stored receipt |
-| No hallucinated state | `validate` runs against live rows inside the proposal transaction |
-| Safe under concurrency | `SELECT ... FOR UPDATE` on the action row; domain rows locked inside the same transaction |
+| No duplicated committed effect | `unique (scope, idempotency_key)` + immutable receipts; replays return the stored receipt |
+| No hallucinated state | `validate` runs against live rows at propose time; `apply` must re-check the invariant at commit |
+| Same-action concurrency | `SELECT ... FOR UPDATE` on the action row; different keys need domain constraints, conditional SQL or locks |
 | Holds expire cleanly | TTL starts when `validate` approves; PostgreSQL `clock_timestamp()` is authoritative; `commit` materializes `expired` + event before throwing; `get` reports effective expiry without writing |
-| Full audit trail | `cg_events` is append-only (`held`, `rejected`, `revived`, `expired`, `committed`) |
+| Audit events | `cg_events` records state changes; append-only is an application convention, not database-enforced |
 | Payload integrity | Same key + different action type or payload = `E_IDEMPOTENCY_MISMATCH` in every state, using PostgreSQL `jsonb` equality |
 
 ## Data model
 
 - `cg_actions` — one row per logical action: scope, type, key, status, payload, decision, receipt, hold expiry.
-- `cg_events` — append-only history per action.
+- `cg_events` — event history per action. It is append-only by application convention; the schema does not enforce UPDATE/DELETE restrictions.
 - Your domain tables stay yours. The only contract is that `validate`/`apply` receive a transaction client.
 
 `scope` partitions idempotency keys (per tenant, per conversation, per anything). Keys are unique inside a scope. `commit(actionId)` also requires the action to belong to the authority's scope; an id from another scope is `E_NOT_FOUND`.
@@ -121,25 +121,25 @@ Errors before `COMMIT` roll back the transaction and are rethrown unchanged; Pos
 
 ## Exactly-once, precisely
 
-Inside your database, commits are exactly-once: a repeated `commit` returns the same receipt and never runs the effect twice.
+Inside your database, commits are exactly-once: a repeated `commit` returns the same receipt and never runs the effect twice. `apply` itself may run more than once if an earlier transaction rolls back; the guarantee is at-most-once for the committed database effect, not for callback execution.
 
 Payloads and results must be JSON-compatible. The authority validates them before use, rejects unstable JavaScript values, and stores a void `apply` result as `null`. The first commit returns the receipt persisted by PostgreSQL, so replay and `get` return the same representation.
 
-If your `apply` calls an external service, pass its idempotency key along too (Stripe has one, for example). Durability here plus an idempotency key there is what makes retries safe end to end. That combination is usually called effectively-once, and it is the honest name for the whole chain.
+If your `apply` calls an external service, pass its idempotency key along too (Stripe has one, for example). Durability here plus an idempotency key there is what makes retries safe end to end. That combination is usually called effectively-once, and it is the honest name for the whole chain. For messaging or multi-step external work, use an outbox/inbox or a durable workflow; neither is built into this library.
 
 ## Testing pyramid
 
 | Layer | What it proves | Command |
 |---|---|---|
-| `test/unit` | Definitions, registry, input validation | `pnpm test` |
-| `test/integration` | Lifecycle over real PostgreSQL: holds, expiry, revival, rejections, audit | `pnpm test:db` |
-| `test/concurrency` | 40 agents, one slot: exactly one commit; same-key storm: one hold | `pnpm test:db` |
+| `test/unit` | Definitions, JSON contract, adapter behavior, input validation | `pnpm test` |
+| `test/integration` | Lifecycle over real PostgreSQL: holds, expiry, revival, rejections, audit, quickstart, connection resilience | `pnpm test:db` |
+| `test/concurrency` | 40 agents racing for one slot; 100 commits for one action | `pnpm test:db` |
 
 PostgreSQL for tests comes from `docker-compose.yml` (host port 5433).
 
 ## Stack
 
-TypeScript (strict) · tsdown (ESM + CJS + dts) · vitest · biome · PostgreSQL 13+ · CI on GitHub Actions with a real Postgres service.
+TypeScript (strict) · tsdown (ESM + CJS + dts) · vitest · biome · PostgreSQL 14+ (CI: 14/16/17) · GitHub Actions with a real Postgres service.
 
 ## Roadmap
 

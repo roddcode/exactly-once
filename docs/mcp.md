@@ -17,7 +17,7 @@ import { Pool } from "pg";
 import { ActionRejected, createAuthority, defineAction, fromPg } from "exactly-once";
 import { connectStdio, createMcpServer } from "exactly-once/mcp";
 
-const createBooking = defineAction({
+const createBooking = defineAction<{ slot: string }, { slot: string }>({
   type: "createBooking",
   hold: { ttlSeconds: 300 },
   validate: async (ctx, payload) => {
@@ -60,6 +60,17 @@ await connectStdio(server);
 ## Errors
 
 Operational errors (`AuthorityError`) come back as tool errors: `isError: true` with `{ "error": { "code": "E_*", "message": "..." } }`. Domain rejections are not errors — they are normal results with `status: "rejected"` and optional `alternatives` the agent can offer instead.
+
+## Security and operations
+
+The adapter is a tool surface, not an authorization boundary.
+
+- The server does not authenticate clients or authorize actions. The host must authenticate, enforce tenant/session isolation, and decide whether `commit_action` needs human approval.
+- `commit_action` is directly invocable by the model. Do not expose it to untrusted agents without a host-side approval or policy gate; tool annotations are hints, not security controls.
+- `scope` is fixed per authority and is a namespace, not authentication. Use one authority/server per tenant or wrap the tools to bind the session to a scope.
+- Apply rate limits, payload size/depth limits and retention policies in the host. The MCP `payload` schema accepts a JSON object; arrays and scalar payloads are rejected by the tool even though the core accepts them.
+- `get_action` can return a receipt result. Treat it as sensitive data; redact logs and responses as needed.
+- Only `AuthorityError` is mapped to a stable `{ code, message }` tool error. Other errors propagate to the SDK; the host should sanitize unknown errors before they reach the model.
 
 ## Agent flow
 

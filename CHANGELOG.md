@@ -1,0 +1,25 @@
+# Changelog
+
+## Unreleased (after 0.2.0)
+
+### Breaking
+
+- Require Node 22.13+ (Node 20 is EOL) and test Node 22/24.
+- Enforce JSON-compatible payloads and `apply` results. Unsupported values now fail with `E_INVALID_PAYLOAD` or `E_INVALID_RESULT`; a void result is stored as `null`.
+- Bind idempotency identity to `(scope, key, actionType, payload)` in every state, including `committed`.
+- Scope `commit(actionId)` to the authority's scope; cross-scope ids return `E_NOT_FOUND`.
+- Start hold TTL after `validate` approves and use PostgreSQL `clock_timestamp()` for expiry decisions.
+- Persist `expired` and its event before `E_HOLD_EXPIRED`; `get` reports effective expiry without writing.
+
+### Fixed
+
+- `ActionRejected` and `validate` deny no longer leave domain writes committed.
+- Commits and revivals no longer execute a different action type or payload than the one identified by the key.
+- Revivals and commits are serialized without duplicate `expired`/`committed` events.
+- `fromPg` survives client connection errors, discards broken clients, and exposes `PgCommitUnknownError` for ambiguous `COMMIT` outcomes.
+- Added quickstart, scope-isolation, expiry, adapter-resilience and same-action commit-storm regressions.
+
+### Packaging
+
+- Publish `docs/` and this changelog in the npm tarball.
+- Add the MCP stdio smoke test to CI.

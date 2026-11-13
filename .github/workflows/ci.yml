@@ -20,6 +20,7 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      - run: pnpm smoke:mcp
       - run: pnpm validate:package
 
   test:

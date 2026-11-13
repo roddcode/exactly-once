@@ -1,7 +1,7 @@
 {
   "name": "exactly-once",
   "version": "0.2.0",
-  "description": "Exactly-once, domain-checked commits for AI agent actions. Agents propose. The database decides.",
+  "description": "Exactly-once PostgreSQL commits for AI agent actions, with domain validation and persisted receipts.",
   "license": "MIT",
   "author": "Alejandro Alvarado (roddcode) <roddcode.dev@gmail.com>",
   "homepage": "https://roddcode.com",
@@ -25,7 +25,9 @@
     "node": ">=22.13.0"
   },
   "files": [
-    "dist"
+    "dist",
+    "docs",
+    "CHANGELOG.md"
   ],
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
