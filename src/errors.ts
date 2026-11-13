@@ -3,6 +3,8 @@ export type AuthorityErrorCode =
   | "E_HOLD_EXPIRED"
   | "E_IDEMPOTENCY_MISMATCH"
   | "E_INVALID_KEY"
+  | "E_INVALID_PAYLOAD"
+  | "E_INVALID_RESULT"
   | "E_NOT_FOUND"
   | "E_NOT_HELD";
 

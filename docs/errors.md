@@ -10,7 +10,9 @@ Two kinds of failure exist: operational errors the authority raises, and domain 
 |---|---|---|---|
 | `E_ACTION_UNKNOWN` | `propose`, `commit` | The action type is not registered in `createAuthority({ actions })`. | Register the action, or fix the type string. |
 | `E_INVALID_KEY` | `propose` | `idempotencyKey` is missing, empty, not a string, or longer than 255 characters. | Pass a stable key: a message id, a job id. One key per logical action. |
-| `E_IDEMPOTENCY_MISMATCH` | `propose` | The key already exists with a different payload (live hold, or an expired/rejected row). | Your caller has a bug. Never reuse a key for a different intent. |
+| `E_INVALID_PAYLOAD` | `propose` | The payload contains a value that cannot be represented stably as JSON (`undefined`, `Date`, `BigInt`, `NaN`, `Infinity`, functions, symbols, circular references, class instances, accessors). | Send JSON-compatible values. Omit properties instead of setting them to `undefined`. |
+| `E_INVALID_RESULT` | `commit` | `apply` returned a value that cannot be represented stably as JSON. | Return JSON-compatible data. A `void` result is stored as `null`. |
+| `E_IDEMPOTENCY_MISMATCH` | `propose` | The key already exists with a different action type or payload, in any state including `committed`. | Your caller has a bug. Never reuse a key for a different intent. |
 | `E_NOT_FOUND` | `commit` | No action exists with that id. | Check the id. Maybe the transaction that created it was rolled back. |
 | `E_HOLD_EXPIRED` | `commit` | The hold TTL elapsed before commit. | `propose` again with the same key and payload to revive it, then commit. |
 | `E_NOT_HELD` | `commit` | The action was rejected, either by `validate` or by an `ActionRejected` thrown in `apply`. | Read the reason via `get(key)` instead of retrying blindly. |

@@ -56,7 +56,7 @@ Every mutation the domain needs happens inside the commit transaction. `apply` r
 | Safe under concurrency | `SELECT ... FOR UPDATE` on the action row; domain rows locked inside the same transaction |
 | Holds expire cleanly | `expires_at` + TTL; expired holds are never committed, only revived with the same payload |
 | Full audit trail | `cg_events` is append-only (`held`, `rejected`, `revived`, `expired`, `committed`) |
-| Payload integrity | Same key + different payload = `E_IDEMPOTENCY_MISMATCH` (canonical JSON comparison) |
+| Payload integrity | Same key + different action type or payload = `E_IDEMPOTENCY_MISMATCH` in every state, using PostgreSQL `jsonb` equality |
 
 ## Data model
 
@@ -107,6 +107,8 @@ Drivers that only speak tagged templates still work: adapt their raw-query path 
 ## Exactly-once, precisely
 
 Inside your database, commits are exactly-once: a repeated `commit` returns the same receipt and never runs the effect twice.
+
+Payloads and results must be JSON-compatible. The authority validates them before use, rejects unstable JavaScript values, and stores a void `apply` result as `null`. The first commit returns the receipt persisted by PostgreSQL, so replay and `get` return the same representation.
 
 If your `apply` calls an external service, pass its idempotency key along too (Stripe has one, for example). Durability here plus an idempotency key there is what makes retries safe end to end. That combination is usually called effectively-once, and it is the honest name for the whole chain.
 

@@ -110,6 +110,89 @@ async function inSavepoint<T>(
   }
 }
 
+type JsonErrorCode = "E_INVALID_PAYLOAD" | "E_INVALID_RESULT";
+
+function serializeJson(value: unknown, label: string, code: JsonErrorCode): string {
+  assertJsonValue(value, label, new Set(), code);
+  return JSON.stringify(value);
+}
+
+function assertJsonValue(
+  value: unknown,
+  path: string,
+  ancestors: Set<object>,
+  code: JsonErrorCode,
+): void {
+  if (value === null) return;
+
+  switch (typeof value) {
+    case "string":
+    case "boolean":
+      return;
+    case "number":
+      if (!Number.isFinite(value)) {
+        throw new AuthorityError(code, `${path} must be a finite number`);
+      }
+      return;
+    case "undefined":
+      throw new AuthorityError(code, `${path} is undefined; omit the property instead`);
+    case "bigint":
+      throw new AuthorityError(code, `${path} is a BigInt; use a JSON-compatible value`);
+    case "function":
+    case "symbol":
+      throw new AuthorityError(code, `${path} is a ${typeof value}; use a JSON-compatible value`);
+    case "object":
+      break;
+  }
+
+  const object = value as object;
+  if (ancestors.has(object)) {
+    throw new AuthorityError(code, `${path} contains a circular reference`);
+  }
+  ancestors.add(object);
+
+  try {
+    if (Object.getOwnPropertySymbols(object).length > 0) {
+      throw new AuthorityError(code, `${path} has symbol-keyed properties`);
+    }
+
+    if (Array.isArray(value)) {
+      for (const key of Object.getOwnPropertyNames(value)) {
+        if (key === "length") continue;
+        if (!/^(0|[1-9]\d*)$/.test(key) || Number(key) >= value.length) {
+          throw new AuthorityError(code, `${path}.${key} is not a valid array index`);
+        }
+      }
+      for (let index = 0; index < value.length; index += 1) {
+        if (!(index in value)) {
+          throw new AuthorityError(code, `${path}[${index}] is a hole`);
+        }
+        assertJsonValue(value[index], `${path}[${index}]`, ancestors, code);
+      }
+      return;
+    }
+
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) {
+      throw new AuthorityError(code, `${path} is not a plain object`);
+    }
+
+    for (const key of Object.getOwnPropertyNames(value)) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (!descriptor) continue;
+      if (!descriptor.enumerable) {
+        throw new AuthorityError(code, `${path}.${key} is not enumerable`);
+      }
+      if (!("value" in descriptor)) {
+        throw new AuthorityError(code, `${path}.${key} is an accessor`);
+      }
+      assertJsonValue(descriptor.value, `${path}.${key}`, ancestors, code);
+    }
+  } finally {
+    ancestors.delete(object);
+  }
+}
+
 export function createAuthority(options: AuthorityOptions): Authority {
   const scope = options.scope ?? "default";
   const defaultTtl = options.defaultHoldTtlSeconds ?? DEFAULT_HOLD_TTL_SECONDS;
@@ -148,6 +231,7 @@ export function createAuthority(options: AuthorityOptions): Authority {
         );
       }
       const ttlSeconds = action.hold?.ttlSeconds ?? defaultTtl;
+      const payloadJson = serializeJson(payload, "payload", "E_INVALID_PAYLOAD");
 
       return options.db.transaction(async (tx) => {
         const inserted = await tx.query<ActionRow>(
@@ -155,12 +239,12 @@ export function createAuthority(options: AuthorityOptions): Authority {
            values ($1, $2, $3, 'held', $4::jsonb, now() + make_interval(secs => $5))
            on conflict (scope, idempotency_key) do nothing
            returning *`,
-          [scope, actionType, key, JSON.stringify(payload), ttlSeconds],
+          [scope, actionType, key, payloadJson, ttlSeconds],
         );
 
         const created = inserted[0];
         if (created) {
-          await insertEvent(tx, created.id, "held", { payload });
+          await insertEventJson(tx, created.id, "held", `{"payload":${payloadJson}}`);
           const validate = action.validate;
           const decision = validate
             ? await inSavepoint(tx, nextSavepoint("validate"), "always-rollback", () =>
@@ -178,9 +262,12 @@ export function createAuthority(options: AuthorityOptions): Authority {
           };
         }
 
-        const existing = await tx.query<ActionRow>(
-          "select * from cg_actions where scope = $1 and idempotency_key = $2 for update",
-          [scope, key],
+        const existing = await tx.query<ActionRow & { payload_matches: boolean }>(
+          `select *, payload = $3::jsonb as payload_matches
+           from cg_actions
+           where scope = $1 and idempotency_key = $2
+           for update`,
+          [scope, key, payloadJson],
         );
         const row = existing[0];
         if (!row) {
@@ -188,25 +275,25 @@ export function createAuthority(options: AuthorityOptions): Authority {
             "exactly-once: invariant violated, conflicted insert without a persisted row",
           );
         }
-        if (row.status === "committed") {
-          return { status: "committed", receipt: storedReceipt(row) };
+        if (row.action_type !== actionType) {
+          throw new AuthorityError(
+            "E_IDEMPOTENCY_MISMATCH",
+            `idempotency key "${key}" is already bound to action type "${row.action_type}"`,
+          );
         }
-        if (row.status === "held" && !isExpired(row)) {
-          if (canonical(row.payload) !== canonical(payload)) {
-            throw new AuthorityError(
-              "E_IDEMPOTENCY_MISMATCH",
-              `idempotency key "${key}" is held with a different payload`,
-            );
-          }
-          return { status: "approved", actionId: row.id, expiresAt: toIso(row.expires_at) };
-        }
-
-        if (canonical(row.payload) !== canonical(payload)) {
+        if (!row.payload_matches) {
           throw new AuthorityError(
             "E_IDEMPOTENCY_MISMATCH",
             `idempotency key "${key}" was already used with a different payload`,
           );
         }
+        if (row.status === "committed") {
+          return { status: "committed", receipt: storedReceipt(row) };
+        }
+        if (row.status === "held" && !isExpired(row)) {
+          return { status: "approved", actionId: row.id, expiresAt: toIso(row.expires_at) };
+        }
+
         const validate = action.validate;
         const decision = validate
           ? await inSavepoint(tx, nextSavepoint("validate"), "always-rollback", () =>
@@ -283,19 +370,25 @@ export function createAuthority(options: AuthorityOptions): Authority {
           throw error;
         }
 
+        const resultValue = result === undefined ? null : result;
+        serializeJson(resultValue, "result", "E_INVALID_RESULT");
         const receipt: Receipt = {
           actionId: row.id,
           actionType: row.action_type,
           idempotencyKey: row.idempotency_key,
           committedAt: new Date().toISOString(),
-          result,
+          result: resultValue,
         };
-        await tx.query(
-          "update cg_actions set status = 'committed', receipt = $2::jsonb, updated_at = now() where id = $1",
+        const updated = await tx.query<ActionRow>(
+          "update cg_actions set status = 'committed', receipt = $2::jsonb, updated_at = now() where id = $1 returning *",
           [row.id, JSON.stringify(receipt)],
         );
+        const stored = updated[0];
+        if (!stored) {
+          throw new Error("exactly-once: invariant violated, commit update returned no row");
+        }
         await insertEvent(tx, row.id, "committed", {});
-        return { status: "committed", receipt };
+        return { status: "committed", receipt: storedReceipt(stored) };
       });
     },
 
@@ -326,10 +419,19 @@ async function insertEvent(
   event: string,
   data: Record<string, unknown>,
 ): Promise<void> {
+  await insertEventJson(tx, actionId, event, JSON.stringify(data));
+}
+
+async function insertEventJson(
+  tx: Client,
+  actionId: string,
+  event: string,
+  dataJson: string,
+): Promise<void> {
   await tx.query("insert into cg_events (action_id, event, data) values ($1, $2, $3::jsonb)", [
     actionId,
     event,
-    JSON.stringify(data),
+    dataJson,
   ]);
 }
 
@@ -388,20 +490,4 @@ function toRecord(row: ActionRow): ActionRecord {
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
   };
-}
-
-/** Stable JSON serialization for payload comparison (key order and undefined-proof). */
-function canonical(value: unknown): string {
-  if (value === null || typeof value !== "object") {
-    return JSON.stringify(value) ?? String(value);
-  }
-  if (Array.isArray(value)) {
-    return `[${value.map(canonical).join(",")}]`;
-  }
-  const entries = Object.entries(value as Record<string, unknown>)
-    .filter(([, entryValue]) => entryValue !== undefined)
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-  return `{${entries
-    .map(([entryKey, entryValue]) => `${JSON.stringify(entryKey)}:${canonical(entryValue)}`)
-    .join(",")}}`;
 }

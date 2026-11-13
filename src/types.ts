@@ -66,7 +66,10 @@ export interface ActionDefinition<Payload = unknown, Result = unknown> {
   readonly hold?: HoldOptions;
 }
 
-/** Immutable proof of a committed action. Replays return the same receipt. */
+/**
+ * Immutable proof of a committed action. Replays return the same receipt.
+ * `result` must be JSON-compatible; a void `apply` result is stored as `null`.
+ */
 export interface Receipt<Result = unknown> {
   readonly actionId: string;
   readonly actionType: string;
