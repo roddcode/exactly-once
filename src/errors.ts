@@ -20,9 +20,10 @@ export class AuthorityError extends Error {
 }
 
 /**
- * Throw from an action's `apply` to reject the commit domain-side: the effect
- * rolls back, the action is marked rejected, and the caller receives the
- * reason (with optional alternatives).
+ * Throw from an action's `apply` to reject the commit domain-side: writes made
+ * since the apply savepoint are rolled back, the action is marked rejected,
+ * and the caller receives the reason (with optional alternatives). External
+ * effects are not rolled back.
  */
 export class ActionRejected extends Error {
   readonly reason: string;

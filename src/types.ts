@@ -1,6 +1,8 @@
 /**
  * A minimal structural database client. Any Postgres driver can satisfy it:
  * `pg`, `postgres.js`, Drizzle or Neon adapters are ~20 lines (see adapters/).
+ * Inside an authority transaction it must support `SAVEPOINT`,
+ * `ROLLBACK TO SAVEPOINT` and `RELEASE SAVEPOINT`.
  */
 export interface Client {
   query<R = Record<string, unknown>>(sql: string, params?: readonly unknown[]): Promise<R[]>;
@@ -40,16 +42,25 @@ export interface HoldOptions {
 }
 
 /**
- * A domain action. `validate` decides against live state; `apply` commits the
- * effect. Both run inside transactions owned by the authority.
+ * A domain action. `validate` decides against live state and must be
+ * logically read-only; its database writes are always rolled back. `apply`
+ * commits the effect inside the commit transaction. Both run in transactions
+ * owned by the authority.
  */
 export interface ActionDefinition<Payload = unknown, Result = unknown> {
   readonly type: string;
+  /**
+   * Decide against live state. Runs inside a savepoint that is always rolled
+   * back, so persistent domain writes are discarded even when it allows.
+   * Sequence advances, external effects and session-level side effects are
+   * not undone; do not rely on them here.
+   */
   readonly validate?: (ctx: TxContext, payload: Payload) => Decision | Promise<Decision>;
   /**
-   * Commit the effect. Runs inside the commit transaction: if it throws, the
-   * whole commit rolls back and the hold stays. Throw `ActionRejected` to end
-   * the action as rejected with a domain reason.
+   * Commit the effect. Runs inside a savepoint in the commit transaction: if
+   * it throws, its writes are rolled back and the hold stays. Throw
+   * `ActionRejected` to roll back its writes, mark the action rejected, and
+   * return the domain reason. External effects are not rolled back.
    */
   readonly apply: (ctx: TxContext, payload: Payload) => Result | Promise<Result>;
   readonly hold?: HoldOptions;

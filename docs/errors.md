@@ -50,7 +50,9 @@ apply: async (ctx, payload) => {
 };
 ```
 
-`commit` resolves with `{ status: "rejected", reason, alternatives? }`, the effect rolls back, and the rejection is recorded in the audit log.
+`commit` resolves with `{ status: "rejected", reason, alternatives? }`, the writes made by `apply` since its savepoint are rolled back, and the rejection is recorded in the audit log. External effects performed by `apply` are not rolled back.
+
+`validate` must be logically read-only. The authority runs it in a savepoint that is always rolled back, so persistent domain writes are discarded even when validation allows. This is not a security sandbox: sequence advances, external calls and session-level side effects are not undone. Keep domain effects in `apply`.
 
 ## Postgres errors you may see
 

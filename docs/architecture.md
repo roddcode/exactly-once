@@ -39,7 +39,13 @@ commit(actionId)
                            └── success       → row 'committed' + receipt (immutable)
 ```
 
-Every mutation the domain needs happens inside the commit transaction: if `apply` throws, everything rolls back and the hold is still there.
+Every mutation the domain needs happens inside the commit transaction. `apply` runs in a savepoint: on success its writes are kept; on any error its writes are rolled back. `ActionRejected` additionally records the rejection. For non-rejection errors the hold stays.
+
+## Callback contract
+
+`validate` must be logically read-only. It runs in a savepoint that is always rolled back, so persistent domain writes are discarded even when validation allows. Savepoints do not undo sequence advances, external effects or session-level side effects. This is a contract, not a security sandbox.
+
+`apply` is the only callback allowed to persist domain effects. It runs in a savepoint: on success its writes are kept; on `ActionRejected` its writes since the savepoint are rolled back and the rejection is recorded; on any other error the whole commit rolls back and the hold stays. External effects are not covered by either rollback.
 
 ## Guarantees and mechanisms
 
@@ -62,7 +68,7 @@ Every mutation the domain needs happens inside the commit transaction: if `apply
 
 ## Adapters
 
-The `Database` interface is structural: two methods, zero imports. `fromPg` ships in the package and covers `pg` pools. Any other driver is a short adapter. This is `postgres.js`:
+The `Database` interface is structural: two methods, zero imports. `fromPg` ships in the package and covers `pg` pools. Any other driver is a short adapter. The transaction client must support `SAVEPOINT`, `ROLLBACK TO SAVEPOINT` and `RELEASE SAVEPOINT`; the authority uses them around `validate` and `apply`. This is `postgres.js`:
 
 ```ts
 import postgres from "postgres";

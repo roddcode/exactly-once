@@ -66,6 +66,50 @@ export interface AuthorityOptions {
 const DEFAULT_HOLD_TTL_SECONDS = 300;
 const MAX_KEY_LENGTH = 255;
 
+type SavepointMode = "always-rollback" | "release-on-success";
+
+let savepointSequence = 0;
+
+function nextSavepoint(kind: "validate" | "apply"): string {
+  savepointSequence += 1;
+  return `exactly_once_${kind}_${savepointSequence}`;
+}
+
+/**
+ * Run a domain callback inside a savepoint.
+ *
+ * `validate` is logically read-only: its savepoint is always rolled back, so
+ * no domain write survives the proposal. `apply` keeps its writes on success
+ * and rolls back to the savepoint when it throws (notably `ActionRejected`).
+ *
+ * Savepoints undo transactional database writes. They do not undo sequence
+ * advances, external effects, or session-level side effects; callbacks must
+ * not rely on those inside `validate`.
+ */
+async function inSavepoint<T>(
+  tx: Client,
+  name: string,
+  mode: SavepointMode,
+  fn: () => T | Promise<T>,
+): Promise<T> {
+  await tx.query(`savepoint ${name}`);
+  try {
+    const result = await fn();
+    if (mode === "always-rollback") {
+      await tx.query(`rollback to savepoint ${name}`);
+    }
+    await tx.query(`release savepoint ${name}`);
+    return result;
+  } catch (error) {
+    try {
+      await tx.query(`rollback to savepoint ${name}`);
+    } catch {
+      // The connection is broken; the original error is the one that matters.
+    }
+    throw error;
+  }
+}
+
 export function createAuthority(options: AuthorityOptions): Authority {
   const scope = options.scope ?? "default";
   const defaultTtl = options.defaultHoldTtlSeconds ?? DEFAULT_HOLD_TTL_SECONDS;
@@ -117,8 +161,11 @@ export function createAuthority(options: AuthorityOptions): Authority {
         const created = inserted[0];
         if (created) {
           await insertEvent(tx, created.id, "held", { payload });
-          const decision = action.validate
-            ? await action.validate(context(tx, created), payload)
+          const validate = action.validate;
+          const decision = validate
+            ? await inSavepoint(tx, nextSavepoint("validate"), "always-rollback", () =>
+                validate(context(tx, created), payload),
+              )
             : null;
           if (decision && !decision.allow) {
             await rejectRow(tx, created.id, decision);
@@ -160,7 +207,12 @@ export function createAuthority(options: AuthorityOptions): Authority {
             `idempotency key "${key}" was already used with a different payload`,
           );
         }
-        const decision = action.validate ? await action.validate(context(tx, row), payload) : null;
+        const validate = action.validate;
+        const decision = validate
+          ? await inSavepoint(tx, nextSavepoint("validate"), "always-rollback", () =>
+              validate(context(tx, row), payload),
+            )
+          : null;
         if (decision && !decision.allow) {
           await rejectRow(tx, row.id, decision);
           return rejectedProposal(decision);
@@ -213,7 +265,9 @@ export function createAuthority(options: AuthorityOptions): Authority {
         const action = actionFor(row.action_type);
         let result: unknown;
         try {
-          result = await action.apply(context(tx, row), row.payload);
+          result = await inSavepoint(tx, nextSavepoint("apply"), "release-on-success", () =>
+            action.apply(context(tx, row), row.payload),
+          );
         } catch (error) {
           if (error instanceof ActionRejected) {
             await rejectRow(tx, row.id, {
