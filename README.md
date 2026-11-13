@@ -25,7 +25,7 @@ Three verbs: `propose`, `commit`, `get`.
 npm install exactly-once pg
 ```
 
-Requires Node 20.19+ and PostgreSQL 13+.
+Requires Node 22.13+ and PostgreSQL 13+.
 
 The example assumes a `slots(id, booking_id)` table in your database. The authority only owns its own `cg_*` tables; your domain stays yours.
 
