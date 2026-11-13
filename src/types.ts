@@ -37,7 +37,10 @@ export type Decision =
     };
 
 export interface HoldOptions {
-  /** Seconds the hold stays valid before it can be revived. Default: 300. */
+  /**
+   * Seconds the hold stays valid after `validate` approves it. Must be a
+   * finite positive number. Default: 300.
+   */
   readonly ttlSeconds?: number;
 }
 

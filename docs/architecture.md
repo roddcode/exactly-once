@@ -33,7 +33,8 @@ commit(actionId)
         SELECT ... FOR UPDATE on the action row      (serializes commits)
         status committed → return stored receipt      (exactly-once)
         status rejected  → E_NOT_HELD
-        expired          → mark 'expired', E_HOLD_EXPIRED
+        expired          → mark 'expired' + event, commit, then E_HOLD_EXPIRED
+        held + expired   → mark 'expired' + event, commit, then E_HOLD_EXPIRED
         held             → action.apply(ctx, payload) inside the transaction
                            ├── ActionRejected → row 'rejected' + reason
                            └── success       → row 'committed' + receipt (immutable)
@@ -54,7 +55,7 @@ Every mutation the domain needs happens inside the commit transaction. `apply` r
 | No duplicated actions | `unique (scope, idempotency_key)` + immutable receipts; replays return the stored receipt |
 | No hallucinated state | `validate` runs against live rows inside the proposal transaction |
 | Safe under concurrency | `SELECT ... FOR UPDATE` on the action row; domain rows locked inside the same transaction |
-| Holds expire cleanly | `expires_at` + TTL; expired holds are never committed, only revived with the same payload |
+| Holds expire cleanly | TTL starts when `validate` approves; PostgreSQL `clock_timestamp()` is authoritative; `commit` materializes `expired` + event before throwing; `get` reports effective expiry without writing |
 | Full audit trail | `cg_events` is append-only (`held`, `rejected`, `revived`, `expired`, `committed`) |
 | Payload integrity | Same key + different action type or payload = `E_IDEMPOTENCY_MISMATCH` in every state, using PostgreSQL `jsonb` equality |
 
@@ -65,6 +66,14 @@ Every mutation the domain needs happens inside the commit transaction. `apply` r
 - Your domain tables stay yours. The only contract is that `validate`/`apply` receive a transaction client.
 
 `scope` partitions idempotency keys (per tenant, per conversation, per anything). Keys are unique inside a scope. `commit(actionId)` also requires the action to belong to the authority's scope; an id from another scope is `E_NOT_FOUND`.
+
+## Holds and time
+
+- A new hold gets `expires_at = clock_timestamp() + ttl` only after `validate` approves it. A slow validation does not consume the TTL.
+- TTL values must be finite and strictly positive, including the authority default. Invalid values fail at `createAuthority`.
+- `commit` locks the action row, then evaluates expiry with PostgreSQL `clock_timestamp()`. If the hold is expired, it updates `expired`, inserts the `expired` event, commits, and only then throws `E_HOLD_EXPIRED`. Retries do not duplicate the event.
+- `get` reports an effective `expired` status for a `held` row whose expiry has passed, without writing anything. `committed` and `rejected` rows are never rewritten by this rule.
+- Revival is serialized with `commit` by the row lock. Whichever transaction acquires the lock first defines the order; neither path duplicates `expired` or `committed` events.
 
 ## Adapters
 

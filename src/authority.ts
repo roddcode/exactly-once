@@ -59,12 +59,24 @@ export interface AuthorityOptions {
   /** Tenancy/partition boundary for idempotency keys. Default: "default". */
   readonly scope?: string;
   readonly actions: readonly ActionDefinition<never, unknown>[];
-  /** Default hold TTL in seconds when an action does not declare one. Default: 300. */
+  /** Default hold TTL in seconds when an action does not declare one. Must be a finite positive number. Default: 300. */
   readonly defaultHoldTtlSeconds?: number;
 }
 
 const DEFAULT_HOLD_TTL_SECONDS = 300;
 const MAX_KEY_LENGTH = 255;
+
+function assertTtl(value: unknown, label: string): asserts value is number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    throw new Error(`exactly-once: ${label} must be a finite positive number of seconds`);
+  }
+}
+
+function resolveTtl(value: number | undefined, fallback: number, label: string): number {
+  const ttl = value === undefined ? fallback : value;
+  assertTtl(ttl, label);
+  return ttl;
+}
 
 type SavepointMode = "always-rollback" | "release-on-success";
 
@@ -195,7 +207,11 @@ function assertJsonValue(
 
 export function createAuthority(options: AuthorityOptions): Authority {
   const scope = options.scope ?? "default";
-  const defaultTtl = options.defaultHoldTtlSeconds ?? DEFAULT_HOLD_TTL_SECONDS;
+  const defaultTtl = resolveTtl(
+    options.defaultHoldTtlSeconds,
+    DEFAULT_HOLD_TTL_SECONDS,
+    "defaultHoldTtlSeconds",
+  );
   const registry = new Map<string, ErasedAction>();
 
   for (const action of options.actions) {
@@ -204,6 +220,10 @@ export function createAuthority(options: AuthorityOptions): Authority {
     }
     if (registry.has(action.type)) {
       throw new Error(`exactly-once: duplicate action type "${action.type}"`);
+    }
+    const actionTtl = action.hold?.ttlSeconds;
+    if (actionTtl !== undefined) {
+      assertTtl(actionTtl, `action "${action.type}" hold.ttlSeconds`);
     }
     // Types are erased only here: callers stay strongly typed, and payloads are
     // checked against live state at propose time, not at compile time.
@@ -230,16 +250,20 @@ export function createAuthority(options: AuthorityOptions): Authority {
           `idempotencyKey must be a non-empty string of at most ${MAX_KEY_LENGTH} characters`,
         );
       }
-      const ttlSeconds = action.hold?.ttlSeconds ?? defaultTtl;
+      const ttlSeconds = resolveTtl(
+        action.hold?.ttlSeconds,
+        defaultTtl,
+        `action "${action.type}" hold.ttlSeconds`,
+      );
       const payloadJson = serializeJson(payload, "payload", "E_INVALID_PAYLOAD");
 
       return options.db.transaction(async (tx) => {
         const inserted = await tx.query<ActionRow>(
           `insert into cg_actions (scope, action_type, idempotency_key, status, payload, expires_at)
-           values ($1, $2, $3, 'held', $4::jsonb, now() + make_interval(secs => $5))
+           values ($1, $2, $3, 'held', $4::jsonb, null)
            on conflict (scope, idempotency_key) do nothing
            returning *`,
-          [scope, actionType, key, payloadJson, ttlSeconds],
+          [scope, actionType, key, payloadJson],
         );
 
         const created = inserted[0];
@@ -255,10 +279,11 @@ export function createAuthority(options: AuthorityOptions): Authority {
             await rejectRow(tx, created.id, decision);
             return rejectedProposal(decision);
           }
+          const approved = await setHoldExpiry(tx, created.id, ttlSeconds);
           return {
             status: "approved",
-            actionId: created.id,
-            expiresAt: toIso(created.expires_at),
+            actionId: approved.id,
+            expiresAt: toIso(approved.expires_at),
           };
         }
 
@@ -290,7 +315,9 @@ export function createAuthority(options: AuthorityOptions): Authority {
         if (row.status === "committed") {
           return { status: "committed", receipt: storedReceipt(row) };
         }
-        if (row.status === "held" && !isExpired(row)) {
+        const expired =
+          row.status === "expired" || (row.status === "held" && (await isHoldExpired(tx, row.id)));
+        if (row.status === "held" && !expired) {
           return { status: "approved", actionId: row.id, expiresAt: toIso(row.expires_at) };
         }
 
@@ -307,7 +334,8 @@ export function createAuthority(options: AuthorityOptions): Authority {
         const revived = await tx.query<ActionRow>(
           `update cg_actions
            set status = 'held', decision = null, receipt = null,
-               expires_at = now() + make_interval(secs => $2), updated_at = now()
+               expires_at = clock_timestamp() + make_interval(secs => $2),
+               updated_at = clock_timestamp()
            where id = $1
            returning *`,
           [row.id, ttlSeconds],
@@ -322,7 +350,7 @@ export function createAuthority(options: AuthorityOptions): Authority {
     },
 
     async commit(actionId) {
-      return options.db.transaction(async (tx) => {
+      const outcome = await options.db.transaction(async (tx) => {
         const found = await tx.query<ActionRow>(
           "select * from cg_actions where id = $1 and scope = $2 for update",
           [actionId, scope],
@@ -332,7 +360,7 @@ export function createAuthority(options: AuthorityOptions): Authority {
           throw new AuthorityError("E_NOT_FOUND", `action not found: ${actionId}`);
         }
         if (row.status === "committed") {
-          return { status: "committed", receipt: storedReceipt(row) };
+          return { status: "committed" as const, receipt: storedReceipt(row) };
         }
         if (row.status === "rejected") {
           throw new AuthorityError(
@@ -340,13 +368,11 @@ export function createAuthority(options: AuthorityOptions): Authority {
             `action was rejected: ${row.decision?.reason ?? "no reason recorded"}`,
           );
         }
-        if (row.status === "expired" || isExpired(row)) {
-          await tx.query(
-            "update cg_actions set status = 'expired', updated_at = now() where id = $1",
-            [row.id],
-          );
-          await insertEvent(tx, row.id, "expired", {});
-          throw new AuthorityError("E_HOLD_EXPIRED", `hold expired for action ${actionId}`);
+        const expired =
+          row.status === "expired" || (row.status === "held" && (await isHoldExpired(tx, row.id)));
+        if (expired) {
+          await markExpired(tx, row.id);
+          return null;
         }
 
         const action = actionFor(row.action_type);
@@ -362,7 +388,7 @@ export function createAuthority(options: AuthorityOptions): Authority {
               ...(error.alternatives ? { alternatives: error.alternatives } : {}),
             });
             return {
-              status: "rejected",
+              status: "rejected" as const,
               reason: error.reason,
               ...(error.alternatives ? { alternatives: error.alternatives } : {}),
             };
@@ -380,7 +406,7 @@ export function createAuthority(options: AuthorityOptions): Authority {
           result: resultValue,
         };
         const updated = await tx.query<ActionRow>(
-          "update cg_actions set status = 'committed', receipt = $2::jsonb, updated_at = now() where id = $1 returning *",
+          "update cg_actions set status = 'committed', receipt = $2::jsonb, updated_at = clock_timestamp() where id = $1 returning *",
           [row.id, JSON.stringify(receipt)],
         );
         const stored = updated[0];
@@ -388,17 +414,27 @@ export function createAuthority(options: AuthorityOptions): Authority {
           throw new Error("exactly-once: invariant violated, commit update returned no row");
         }
         await insertEvent(tx, row.id, "committed", {});
-        return { status: "committed", receipt: storedReceipt(stored) };
+        return { status: "committed" as const, receipt: storedReceipt(stored) };
       });
+
+      if (outcome === null) {
+        throw new AuthorityError("E_HOLD_EXPIRED", `hold expired for action ${actionId}`);
+      }
+      return outcome;
     },
 
     async get(idempotencyKey) {
-      const rows = await options.db.query<ActionRow>(
-        "select * from cg_actions where scope = $1 and idempotency_key = $2",
+      const rows = await options.db.query<ActionRow & { effective_expired: boolean }>(
+        `select *,
+                (status = 'held' and (expires_at is null or expires_at <= clock_timestamp()))
+                  as effective_expired
+         from cg_actions
+         where scope = $1 and idempotency_key = $2`,
         [scope, idempotencyKey],
       );
       const row = rows[0];
-      return row ? toRecord(row) : null;
+      if (!row) return null;
+      return toRecord(row, row.effective_expired ? "expired" : row.status);
     },
   };
 }
@@ -435,6 +471,49 @@ async function insertEventJson(
   ]);
 }
 
+async function setHoldExpiry(tx: Client, actionId: string, ttlSeconds: number): Promise<ActionRow> {
+  const rows = await tx.query<ActionRow>(
+    `update cg_actions
+     set expires_at = clock_timestamp() + make_interval(secs => $2),
+         updated_at = clock_timestamp()
+     where id = $1
+     returning *`,
+    [actionId, ttlSeconds],
+  );
+  const row = rows[0];
+  if (!row) {
+    throw new Error("exactly-once: invariant violated, hold expiry update returned no row");
+  }
+  return row;
+}
+
+async function isHoldExpired(tx: Client, actionId: string): Promise<boolean> {
+  const rows = await tx.query<{ expired: boolean }>(
+    `select (expires_at is null or expires_at <= clock_timestamp()) as expired
+     from cg_actions
+     where id = $1`,
+    [actionId],
+  );
+  const row = rows[0];
+  if (!row) {
+    throw new Error("exactly-once: invariant violated, expired check found no action");
+  }
+  return row.expired;
+}
+
+async function markExpired(tx: Client, actionId: string): Promise<void> {
+  const rows = await tx.query<{ id: string }>(
+    `update cg_actions
+     set status = 'expired', updated_at = clock_timestamp()
+     where id = $1 and status = 'held'
+     returning id`,
+    [actionId],
+  );
+  if (rows[0]) {
+    await insertEvent(tx, actionId, "expired", {});
+  }
+}
+
 async function rejectRow(
   tx: Client,
   actionId: string,
@@ -445,7 +524,7 @@ async function rejectRow(
       ? { reason: decision.reason }
       : { reason: decision.reason, alternatives: decision.alternatives };
   await tx.query(
-    "update cg_actions set status = 'rejected', decision = $2::jsonb, updated_at = now() where id = $1",
+    "update cg_actions set status = 'rejected', decision = $2::jsonb, updated_at = clock_timestamp() where id = $1",
     [actionId, JSON.stringify(payload)],
   );
   await insertEvent(tx, actionId, "rejected", payload);
@@ -467,10 +546,6 @@ function storedReceipt(row: ActionRow): Receipt {
   return row.receipt;
 }
 
-function isExpired(row: ActionRow): boolean {
-  return row.expires_at !== null && new Date(row.expires_at).getTime() <= Date.now();
-}
-
 function toIso(value: Date | string | null): string {
   if (value === null) {
     throw new Error("exactly-once: invariant violated, expected a timestamp");
@@ -478,12 +553,12 @@ function toIso(value: Date | string | null): string {
   return value instanceof Date ? value.toISOString() : value;
 }
 
-function toRecord(row: ActionRow): ActionRecord {
+function toRecord(row: ActionRow, status: ActionStatus = row.status): ActionRecord {
   return {
     id: row.id,
     actionType: row.action_type,
     idempotencyKey: row.idempotency_key,
-    status: row.status,
+    status,
     expiresAt: row.expires_at === null ? null : toIso(row.expires_at),
     receipt: row.receipt,
     reason: row.decision?.reason ?? null,

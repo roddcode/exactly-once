@@ -44,6 +44,42 @@ describe("createAuthority", () => {
       authority.propose("ping", {}, { idempotencyKey: "x".repeat(256) }),
     ).rejects.toMatchObject({ code: "E_INVALID_KEY" });
   });
+
+  it("rejects invalid default hold TTLs", () => {
+    for (const ttl of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, null, "60"]) {
+      expect(() =>
+        createAuthority({
+          db: neverCalled,
+          actions: [ping],
+          defaultHoldTtlSeconds: ttl as number,
+        }),
+      ).toThrow(/finite positive/);
+    }
+  });
+
+  it("rejects invalid action hold TTLs", () => {
+    for (const ttl of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, null, "60"]) {
+      const action = defineAction({
+        type: "invalid-ttl",
+        hold: { ttlSeconds: ttl as number },
+        apply: () => ({ ok: true }),
+      });
+      expect(() => createAuthority({ db: neverCalled, actions: [action] })).toThrow(
+        /finite positive/,
+      );
+    }
+  });
+
+  it("accepts finite positive hold TTLs", () => {
+    const action = defineAction({
+      type: "valid-ttl",
+      hold: { ttlSeconds: 0.5 },
+      apply: () => ({ ok: true }),
+    });
+    expect(() =>
+      createAuthority({ db: neverCalled, actions: [action], defaultHoldTtlSeconds: 1 }),
+    ).not.toThrow();
+  });
 });
 
 describe("ActionRejected", () => {

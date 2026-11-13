@@ -14,7 +14,7 @@ Two kinds of failure exist: operational errors the authority raises, and domain 
 | `E_INVALID_RESULT` | `commit` | `apply` returned a value that cannot be represented stably as JSON. | Return JSON-compatible data. A `void` result is stored as `null`. |
 | `E_IDEMPOTENCY_MISMATCH` | `propose` | The key already exists with a different action type or payload, in any state including `committed`. | Your caller has a bug. Never reuse a key for a different intent. |
 | `E_NOT_FOUND` | `commit` | No action exists with that id in this authority's scope. | Check the id and the scope. Maybe the transaction that created it was rolled back. |
-| `E_HOLD_EXPIRED` | `commit` | The hold TTL elapsed before commit. | `propose` again with the same key and payload to revive it, then commit. |
+| `E_HOLD_EXPIRED` | `commit` | The hold TTL elapsed before commit. The expired transition and event are persisted before the error is raised. | `propose` again with the same key and payload to revive it, then commit. Retrying `commit` is safe and does not duplicate the event. |
 | `E_NOT_HELD` | `commit` | The action was rejected, either by `validate` or by an `ActionRejected` thrown in `apply`. | Read the reason via `get(key)` instead of retrying blindly. |
 
 ```ts

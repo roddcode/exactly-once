@@ -107,7 +107,7 @@ Three tools: `propose_action`, `commit_action` and `get_action`. Rejections flow
 - **Exactly-once**: unique idempotency keys and immutable receipts; replays return the stored receipt.
 - **Domain-checked**: `validate` runs against live state inside the transaction, before anything commits.
 - **Safe under concurrency**: 40 agents racing for one slot produce exactly one commit (see `test/concurrency`).
-- **Holds with TTL**: expired holds are never committed; reviving requires the same payload.
+- **Holds with TTL**: expired holds are never committed; `get` reports effective expiry, and reviving requires the same payload.
 - **Audit trail**: every proposal, rejection and commit lands in an append-only log you can query.
 
 ## Docs

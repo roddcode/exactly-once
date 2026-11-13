@@ -124,7 +124,7 @@ describe("idempotency identity", () => {
     expect(betaValidateCalls).toBe(0);
     const record = await authority.get("type-expired");
     expect(record?.actionType).toBe("alpha");
-    expect(record?.status).toBe("held");
+    expect(record?.status).toBe("expired");
     expect(await domainNotes()).toEqual([]);
   });
 
@@ -178,7 +178,7 @@ describe("idempotency identity", () => {
 
     expect(alphaValidateCalls).toBe(1);
     const record = await authority.get("payload-expired");
-    expect(record?.status).toBe("held");
+    expect(record?.status).toBe("expired");
     expect(await domainNotes()).toEqual([]);
   });
 
