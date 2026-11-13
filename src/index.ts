@@ -1,6 +1,6 @@
 export { defineAction } from "./action.js";
 export type { PgClient, PgPool, PgQueryable, PgQueryResult } from "./adapters/pg.js";
-export { fromPg } from "./adapters/pg.js";
+export { fromPg, PgCommitUnknownError } from "./adapters/pg.js";
 export type { Authority, AuthorityOptions, ProposeOptions } from "./authority.js";
 export { createAuthority } from "./authority.js";
 export type { AuthorityErrorCode } from "./errors.js";

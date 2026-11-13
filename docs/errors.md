@@ -75,11 +75,17 @@ async function withRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
 }
 ```
 
-Retries are safe for both verbs: `propose` is idempotent by key, and `commit` replays the stored receipt.
+Retries are safe for both verbs: `propose` is idempotent by key, and `commit` replays the stored receipt. PostgreSQL codes `40P01` and `40001` are rethrown unchanged by `fromPg` so this policy still works.
+
+## `PgCommitUnknownError`
+
+`fromPg` throws this when `COMMIT` was sent but the connection failed before PostgreSQL's response was received. The original error is available as `cause`; a SQLSTATE, when present, is exposed as `code`. The `outcome` is `"unknown"`: do not assume rollback.
+
+Reconcile by calling `commit(actionId)` again or `propose` with the same idempotency key and payload. If the commit succeeded, both return the persisted receipt; if it did not, the hold or expired state remains.
 
 ## Timeouts and dropped connections
 
-Each verb runs inside one transaction. If the connection drops mid-commit, PostgreSQL rolls back and nothing commits: reconnect and re-issue with the same idempotency key.
+An error before `COMMIT` rolls back the transaction. A connection failure while waiting for `COMMIT` is ambiguous; reconnect and reconcile using the key or action id. Never infer from a timeout that nothing committed.
 
 ## Invariant errors
 

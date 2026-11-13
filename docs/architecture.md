@@ -105,6 +105,12 @@ export function fromPostgresJs(sql: postgres.Sql): Database {
 
 Drivers that only speak tagged templates still work: adapt their raw-query path to `unsafe`-style calls with parameters bound at the protocol level.
 
+### Connection failures and ambiguous COMMIT
+
+`fromPg` attaches an `error` listener to the checked-out client, removes it before release, marks the connection broken when it fires, and calls `release(error)` so a broken client is destroyed instead of returning to the pool as healthy.
+
+Errors before `COMMIT` roll back the transaction and are rethrown unchanged; PostgreSQL codes such as `40P01` and `40001` remain available to the consumer. If `COMMIT` itself fails with a transport error or a connection-class SQLSTATE, the outcome is unknown: `fromPg` throws `PgCommitUnknownError` with the original `cause` and SQLSTATE in `code` when available. Reconcile by calling `commit(actionId)` again or `propose` with the same idempotency key and payload. The adapter does not retry callbacks or external effects.
+
 ## Why not X
 
 - **Prompt rules** ("never duplicate"): advisory. No guarantee.
