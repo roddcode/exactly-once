@@ -324,8 +324,8 @@ export function createAuthority(options: AuthorityOptions): Authority {
     async commit(actionId) {
       return options.db.transaction(async (tx) => {
         const found = await tx.query<ActionRow>(
-          "select * from cg_actions where id = $1 for update",
-          [actionId],
+          "select * from cg_actions where id = $1 and scope = $2 for update",
+          [actionId, scope],
         );
         const row = found[0];
         if (!row) {

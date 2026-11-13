@@ -64,7 +64,7 @@ Every mutation the domain needs happens inside the commit transaction. `apply` r
 - `cg_events` — append-only history per action.
 - Your domain tables stay yours. The only contract is that `validate`/`apply` receive a transaction client.
 
-`scope` partitions idempotency keys (per tenant, per conversation, per anything). Keys are unique inside a scope.
+`scope` partitions idempotency keys (per tenant, per conversation, per anything). Keys are unique inside a scope. `commit(actionId)` also requires the action to belong to the authority's scope; an id from another scope is `E_NOT_FOUND`.
 
 ## Adapters
 
