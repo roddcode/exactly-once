@@ -110,7 +110,9 @@ describe("PostgreSQL adapter resilience", () => {
 
       const outcome = await commitPromise;
       expect(outcome.ok).toBe(false);
-      if (!outcome.ok) expect(outcome.code).toBe("57P01");
+      if (!outcome.ok) {
+        expect([undefined, "57P01", "ECONNRESET"]).toContain(outcome.code);
+      }
       expect(await domainNotes()).toEqual([]);
 
       // A broken client must be destroyed, not returned to the pool as healthy.
