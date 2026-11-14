@@ -9,10 +9,11 @@ The release workflow uses npm Trusted Publishing (OIDC), not a long-lived npm to
    - repository: `exactly-once`
    - workflow filename: `publish.yml`
    - environment: `npm`
+   - allowed action: **`npm publish`** (not only stage publish)
 2. In GitHub, create the `npm` environment and require reviewers. Restrict it to the `main` branch.
 3. Confirm the repository has no `NPM_TOKEN` secret; the workflow needs only `id-token: write`.
 
-npm requires a recent CLI for trusted publishing. The workflow installs `npm@11.12.1` explicitly.
+npm requires a recent CLI for trusted publishing. The workflow uses Node 24 and installs `npm@11.12.1` explicitly.
 
 ## Release checklist
 
