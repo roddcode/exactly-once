@@ -133,6 +133,22 @@ function serializeJson(value: unknown, label: string, code: JsonErrorCode): stri
   return JSON.stringify(value);
 }
 
+/**
+ * Freeze a JSON-compatible value recursively.
+ *
+ * `validate` receives a frozen clone of the persisted payload. A callback that
+ * mutates it cannot validate one value while `apply` commits another: the
+ * assignment throws in strict mode and is ignored in sloppy mode, so the
+ * decision always stays tied to the stored payload.
+ */
+function deepFreeze<T>(value: T): T {
+  if (value === null || typeof value !== "object") return value;
+  for (const child of Object.values(value as Record<string, unknown>)) {
+    deepFreeze(child);
+  }
+  return Object.freeze(value) as T;
+}
+
 function assertJsonValue(
   value: unknown,
   path: string,
@@ -275,9 +291,10 @@ export function createAuthority(options: AuthorityOptions): Authority {
           await insertEventJson(tx, created.id, "held", `{"payload":${payloadJson}}`);
           const validate = action.validate;
           const decision = validate
-            ? await inSavepoint(tx, nextSavepoint("validate"), "always-rollback", () =>
-                validate(context(tx, created), payload),
-              )
+            ? await inSavepoint(tx, nextSavepoint("validate"), "always-rollback", () => {
+                const validatePayload = deepFreeze(structuredClone(created.payload));
+                return validate(context(tx, created), validatePayload);
+              })
             : null;
           if (decision && !decision.allow) {
             await rejectRow(tx, created.id, decision);
@@ -327,9 +344,10 @@ export function createAuthority(options: AuthorityOptions): Authority {
 
         const validate = action.validate;
         const decision = validate
-          ? await inSavepoint(tx, nextSavepoint("validate"), "always-rollback", () =>
-              validate(context(tx, row), payload),
-            )
+          ? await inSavepoint(tx, nextSavepoint("validate"), "always-rollback", () => {
+              const validatePayload = deepFreeze(structuredClone(row.payload));
+              return validate(context(tx, row), validatePayload);
+            })
           : null;
         if (decision && !decision.allow) {
           await rejectRow(tx, row.id, decision);

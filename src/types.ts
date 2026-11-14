@@ -57,6 +57,9 @@ export interface ActionDefinition<Payload = unknown, Result = unknown> {
    * back, so persistent domain writes are discarded even when it allows.
    * Sequence advances, external effects and session-level side effects are
    * not undone; do not rely on them here.
+   *
+   * The payload is a deep-frozen copy of the persisted JSON. Do not mutate it:
+   * a mutation throws instead of validating values that `apply` will not see.
    */
   readonly validate?: (ctx: TxContext, payload: Payload) => Decision | Promise<Decision>;
   /**

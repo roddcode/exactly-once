@@ -46,6 +46,8 @@ Every mutation the domain needs happens inside the commit transaction. `apply` r
 
 `validate` must be logically read-only. It runs in a savepoint that is always rolled back, so persistent domain writes are discarded even when validation allows. Savepoints do not undo sequence advances, external effects or session-level side effects. This is a contract, not a security sandbox.
 
+The payload passed to `validate` is a deep-frozen copy of the persisted JSON. Mutating it throws instead of approving values that `apply` will not see.
+
 `apply` is the only callback allowed to persist domain effects. It runs in a savepoint: on success its writes are kept; on `ActionRejected` its writes since the savepoint are rolled back and the rejection is recorded; on any other error the whole commit rolls back and the hold stays. External effects are not covered by either rollback.
 
 ## Guarantees and mechanisms
