@@ -84,7 +84,7 @@ if (proposal.status === "approved") {
 }
 ```
 
-`validate` is logically read-only and receives a frozen copy of the persisted payload; mutating it throws. `apply` is the only callback allowed to persist domain writes, and it must re-check the invariant it needs at commit time. A hold is an approved intention, not a reservation.
+`validate` is logically read-only and receives a deep-frozen copy of the persisted payload; mutating it cannot change the decision or what `apply` will see. `apply` is the only callback allowed to persist domain writes, and it must re-check the invariant it needs at commit time. A hold is an approved intention, not a reservation.
 
 The guarantee covers PostgreSQL effects. If `apply` calls an external service, give that service a stable idempotency key or publish through an outbox; see [exactly-once, precisely](docs/architecture.md#exactly-once-precisely).
 

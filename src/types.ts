@@ -59,7 +59,8 @@ export interface ActionDefinition<Payload = unknown, Result = unknown> {
    * not undone; do not rely on them here.
    *
    * The payload is a deep-frozen copy of the persisted JSON. Do not mutate it:
-   * a mutation throws instead of validating values that `apply` will not see.
+   * in strict mode a mutation throws, and in sloppy mode it is ignored, so the
+   * decision stays tied to the stored payload.
    */
   readonly validate?: (ctx: TxContext, payload: Payload) => Decision | Promise<Decision>;
   /**
