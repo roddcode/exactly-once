@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- MCP tool descriptions now state the actual guarantee: at most one committed PostgreSQL effect per action, with receipt replay. `propose_action` no longer advertises unconditional idempotency; rejected or expired proposals can be revalidated.
+
+### Added
+
+- `examples/mcp-retry`: a runnable MCP client and server that commit twice over separate connections and verify one domain row, one committed action, and one persisted receipt.
+
 ## 0.3.0 — 2026-11-13
 
 ### Breaking

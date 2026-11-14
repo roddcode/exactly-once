@@ -115,6 +115,16 @@ Three tools: `propose_action`, `commit_action` and `get_action`. Rejections flow
 
 The adapter is not an authorization boundary. Authenticate clients in the host and gate `commit_action` with the approval policy your application requires.
 
+## Retry demonstration
+
+[`examples/mcp-retry`](https://github.com/roddcode/exactly-once/tree/main/examples/mcp-retry) is a runnable MCP client and server. The client proposes an action, commits it, closes the connection, reconnects, and retries the same commit. It then checks PostgreSQL directly: one domain row, one committed action, one receipt.
+
+```bash
+pnpm build
+pnpm db:up
+pnpm example:mcp-retry
+```
+
 ## Guarantees
 
 - **Exactly-once database effect per identity**: `(scope, key, actionType, payload)` has one committed outcome; replays return the persisted receipt.

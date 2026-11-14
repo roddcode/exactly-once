@@ -48,7 +48,11 @@ export interface Authority {
     payload: Payload,
     options: ProposeOptions,
   ): Promise<Proposal>;
-  /** Commit a held action exactly once. Replays return the same receipt. */
+  /**
+   * Confirm a held action. The domain effect and its receipt commit in one
+   * transaction; retries return the same receipt and never apply a committed
+   * effect twice. The callback itself may run again after a rollback.
+   */
   commit(actionId: string): Promise<CommitResult>;
   /** Inspect an action by idempotency key. Never executes anything. */
   get(idempotencyKey: string): Promise<ActionRecord | null>;

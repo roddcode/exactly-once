@@ -28,8 +28,8 @@ const DEFAULT_NAME = "exactly-once";
 const DEFAULT_VERSION = "0.3.0";
 const DEFAULT_INSTRUCTIONS = [
   "Agents propose. The database decides.",
-  "Workflow: propose_action validates an action against live database state and returns a hold (approved), a rejection with optional alternatives, or the receipt of a replay.",
-  "commit_action executes a held action exactly once; replays return the same receipt.",
+  "Workflow: propose_action validates an action against current database state and returns a hold (approved), a rejection with optional alternatives, or the persisted receipt if the key is already committed.",
+  "commit_action confirms a held action: the domain effect and its receipt are written in one PostgreSQL transaction. Retries return the same receipt; a committed effect is not applied twice.",
   "get_action inspects an action by idempotency key and never executes anything.",
 ].join(" ");
 
@@ -43,7 +43,9 @@ const proposeInput = z.object({
     .string()
     .min(1)
     .max(255)
-    .describe("Unique key for this logical action; replays are always safe"),
+    .describe(
+      "Unique key for this logical action. Reusing it with the same action type and payload returns the existing state instead of creating a duplicate.",
+    ),
 });
 
 const commitInput = z.object({
@@ -100,9 +102,8 @@ export function createMcpServer(options: McpServerOptions): McpServer {
     {
       title: "Propose action",
       description:
-        "Validate an action against live database state. Returns a hold (approved), a rejection with optional alternatives, or the receipt of a replay. Does not execute the action.",
+        "Validate an action against current database state. Returns a hold (approved), a rejection with optional alternatives, or the persisted receipt if the key is already committed. Does not execute the action.",
       inputSchema: proposeInput,
-      annotations: { idempotentHint: true },
     },
     async ({ actionType, payload, idempotencyKey }) => {
       try {
@@ -124,7 +125,7 @@ export function createMcpServer(options: McpServerOptions): McpServer {
     {
       title: "Commit action",
       description:
-        "Execute a held action exactly once. Replays return the same receipt and never run the effect twice.",
+        "Confirm a held action. Writes the domain effect and its receipt in one PostgreSQL transaction. Retries return the same receipt; a committed effect is not applied twice.",
       inputSchema: commitInput,
       annotations: { idempotentHint: true },
     },

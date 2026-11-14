@@ -77,7 +77,7 @@ The adapter is a tool surface, not an authorization boundary.
 ```
 propose_action → approved  → commit_action → receipt
                → rejected  → offer alternatives, propose again
-               → committed → replay: the same receipt, nothing runs twice
+               → committed → replay: the same receipt, no additional committed effect
 ```
 
 ## Notes

@@ -60,3 +60,9 @@ jobs:
       - name: Full suite
         if: matrix.node != 22 || matrix.postgres != 16
         run: pnpm test:db
+      - name: Build for MCP retry example
+        if: matrix.node == 22 && matrix.postgres == 15
+        run: pnpm build
+      - name: MCP retry example
+        if: matrix.node == 22 && matrix.postgres == 15
+        run: pnpm example:mcp-retry
