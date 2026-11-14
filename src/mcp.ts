@@ -25,7 +25,7 @@ export interface McpServerOptions {
 export type { McpServer };
 
 const DEFAULT_NAME = "exactly-once";
-const DEFAULT_VERSION = "0.3.0";
+const DEFAULT_VERSION = "0.3.1";
 const DEFAULT_INSTRUCTIONS = [
   "Agents propose. The database decides.",
   "Workflow: propose_action validates an action against current database state and returns a hold (approved), a rejection with optional alternatives, or the persisted receipt if the key is already committed.",

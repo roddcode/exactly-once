@@ -1,14 +1,15 @@
 # Changelog
 
-## Unreleased
+## 0.3.1 — 2026-11-13
 
 ### Changed
 
 - MCP tool descriptions now state the actual guarantee: at most one committed PostgreSQL effect per action, with receipt replay. `propose_action` no longer advertises unconditional idempotency; rejected or expired proposals can be revalidated.
+- `validate` now receives a deep-frozen snapshot of the persisted payload. Callbacks that mutated the payload are affected: strict mode throws and sloppy mode ignores the mutation, so they can no longer validate values that `apply` will not commit.
 
 ### Fixed
 
-- `validate` now receives a deep-frozen copy of the persisted payload. A mutating callback can no longer approve values that `apply` will not see.
+- `validate` can no longer approve a value that differs from the persisted payload.
 
 ### Added
 

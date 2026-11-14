@@ -31,6 +31,7 @@ npm requires a recent CLI for trusted publishing. The workflow uses Node 24 and 
    pnpm test:db
    pnpm build
    pnpm smoke:mcp
+   pnpm example:mcp-retry
    pnpm validate:package
    npm pack --dry-run
    ```
@@ -39,16 +40,16 @@ npm requires a recent CLI for trusted publishing. The workflow uses Node 24 and 
 5. Create an annotated tag on that exact commit and push it:
 
    ```bash
-   git tag -a v0.3.0 -m "exactly-once 0.3.0"
-   git push origin v0.3.0
+   git tag -a v0.3.1 -m "exactly-once 0.3.1"
+   git push origin v0.3.1
    ```
 
-6. Create the GitHub Release from `v0.3.0` using the `CHANGELOG.md` entry.
-7. Run the **Publish** workflow with version `0.3.0` and approve the `npm` environment. This is the only step that publishes.
+6. Create the GitHub Release from `v0.3.1` using the `CHANGELOG.md` entry.
+7. Run the **Publish** workflow with version `0.3.1` and approve the `npm` environment. This is the only step that publishes.
 8. Verify the registry:
 
    ```bash
-   npm view exactly-once@0.3.0 version dist.integrity dist.attestations
+   npm view exactly-once@0.3.1 version dist.integrity dist.attestations
    npm audit signatures
    ```
 

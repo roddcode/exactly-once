@@ -1,6 +1,6 @@
 {
   "name": "exactly-once",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Exactly-once PostgreSQL commits for AI agent actions, with domain validation and persisted receipts.",
   "license": "MIT",
   "author": "Alejandro Alvarado (roddcode) <roddcode.dev@gmail.com>",
