@@ -50,5 +50,7 @@ jobs:
           RELEASE_VERSION: ${{ inputs.version }}
         run: |
           git fetch --tags --force
-          test "$(git rev-parse "v$RELEASE_VERSION")" = "$(git rev-parse HEAD)"
+          tag_commit="$(git rev-parse "v$RELEASE_VERSION^{commit}")"
+          test "$tag_commit" = "$(git rev-parse HEAD)"
+          test "$tag_commit" = "$(git rev-parse "origin/main")"
       - run: npm publish --provenance --access public
