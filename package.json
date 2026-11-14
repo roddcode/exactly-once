@@ -1,6 +1,6 @@
 {
   "name": "exactly-once",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Exactly-once PostgreSQL commits for AI agent actions, with domain validation and persisted receipts.",
   "license": "MIT",
   "author": "Alejandro Alvarado (roddcode) <roddcode.dev@gmail.com>",
@@ -76,8 +76,8 @@
     }
   },
   "peerDependencies": {
-    "@modelcontextprotocol/sdk": "^1.31.0",
-    "zod": "^3.25 || ^4.0"
+    "@modelcontextprotocol/sdk": "^1.32.0",
+    "zod": "^3.25 || ^4.6.6"
   },
   "peerDependenciesMeta": {
     "@modelcontextprotocol/sdk": {
@@ -90,15 +90,16 @@
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.5",
     "@biomejs/biome": "^2.5.14",
-    "@modelcontextprotocol/sdk": "^1.31.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@types/node": "^26.6.2",
     "@types/pg": "^8.23.1",
-    "@vitest/coverage-v8": "^5.0.1",
+    "@vitest/coverage-v8": "^5.1.0",
     "pg": "^8.23.0",
     "publint": "^0.3.24",
     "tsdown": "^0.23.0",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.1",
-    "zod": "^4.6.5"
+    "vite": "8.3.8",
+    "vitest": "^5.1.0",
+    "zod": "4.6.7"
   }
 }

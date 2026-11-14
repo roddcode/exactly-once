@@ -1,15 +1,16 @@
 # Changelog
 
-## Unreleased (after 0.2.0)
+## 0.3.0 — 2026-11-13
 
 ### Breaking
 
-- Require Node 22.13+ (Node 20 is EOL) and test Node 22/24.
+- Require Node 22.13+ (Node 20 is EOL) and PostgreSQL 15+; CI covers Node 22/24 and PostgreSQL 15/16/17/18.
 - Enforce JSON-compatible payloads and `apply` results. Unsupported values now fail with `E_INVALID_PAYLOAD` or `E_INVALID_RESULT`; a void result is stored as `null`.
 - Bind idempotency identity to `(scope, key, actionType, payload)` in every state, including `committed`.
 - Scope `commit(actionId)` to the authority's scope; cross-scope ids return `E_NOT_FOUND`.
 - Start hold TTL after `validate` approves and use PostgreSQL `clock_timestamp()` for expiry decisions.
 - Persist `expired` and its event before `E_HOLD_EXPIRED`; `get` reports effective expiry without writing.
+- Require the MCP adapter peers `@modelcontextprotocol/sdk` 1.32+ and Zod 4.6.6+ when using `exactly-once/mcp`.
 
 ### Fixed
 
@@ -23,3 +24,4 @@
 
 - Publish `docs/` and this changelog in the npm tarball.
 - Add the MCP stdio smoke test to CI.
+- The MCP server announces version `0.3.0`.

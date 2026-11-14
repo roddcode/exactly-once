@@ -5,7 +5,7 @@ import type { Database } from "./types.js";
  * migrations; the authority never reads them except through your `validate`
  * and `apply` callbacks.
  *
- * Requires PostgreSQL 14+ (`gen_random_uuid`, identity columns).
+ * Requires PostgreSQL 15+ (`gen_random_uuid`, identity columns).
  */
 export const SCHEMA_SQL = `
 create table if not exists cg_actions (

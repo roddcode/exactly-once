@@ -139,10 +139,10 @@ PostgreSQL for tests comes from `docker-compose.yml` (host port 5433).
 
 ## Stack
 
-TypeScript (strict) · tsdown (ESM + CJS + dts) · vitest · biome · PostgreSQL 14+ (CI: 14/16/17) · GitHub Actions with a real Postgres service.
+TypeScript (strict) · tsdown (ESM + CJS + dts) · vitest · biome · PostgreSQL 15+ (CI: 15/16/17/18) · GitHub Actions with a real Postgres service.
 
 ## Roadmap
 
 - v0.1: propose / commit / get, holds with TTL, revivals, receipts, audit, concurrency suite.
-- v0.2 (current): MCP server adapter (`exactly-once/mcp`) exposing the protocol as tools.
-- v0.3: clinic-booking example app, first-party Drizzle and postgres.js adapters, CLI (`init`, `migrate`, `status`), lifecycle hooks.
+- v0.2: MCP server adapter (`exactly-once/mcp`) exposing the protocol as tools.
+- v0.3 (current): contract corrections, expiry authority, PostgreSQL adapter resilience, stabilization and release packaging.

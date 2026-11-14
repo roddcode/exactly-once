@@ -25,7 +25,7 @@ Three verbs: `propose`, `commit`, `get`.
 npm install exactly-once pg
 ```
 
-Requires Node 22.13+ and PostgreSQL 14+ (CI covers PostgreSQL 14/16/17).
+Requires Node 22.13+ and PostgreSQL 15+ (CI covers PostgreSQL 15/16/17/18).
 
 Create the domain table before running the example. The authority only owns its own `cg_*` tables; your domain stays yours.
 
@@ -129,6 +129,7 @@ The adapter is not an authorization boundary. Authenticate clients in the host a
 - [`docs/architecture.md`](docs/architecture.md): protocol, guarantees, data model, adapters, why not X.
 - [`docs/errors.md`](docs/errors.md): error codes and how to handle each one.
 - [`docs/mcp.md`](docs/mcp.md): MCP server — tools, errors, agent flow.
+- [`docs/release.md`](docs/release.md): release and trusted-publishing checklist.
 
 ## Development
 
